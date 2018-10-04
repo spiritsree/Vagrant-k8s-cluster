@@ -114,12 +114,12 @@ fi
 
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
-CONFIG_EXPOSE() { while :; do cat /etc/kubernetes/admin.conf | nc -l $IPADDR -p 8888 -q 1;done; }
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | nc -C -I 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
 echo 'Exposing /opt/join.cmd on port 8889 ...'
-JOIN_EXPOSE() { while :; do cat /opt/join.cmd | nc -l $IPADDR -p 8889 -q 1;done; }
+JOIN_EXPOSE() { rm -f /tmp/join; mkfifo /tmp/join; while :; do cat /tmp/join | /bin/cat /opt/join.cmd | nc -l $IPADDR -p 8889 -q 1 > /tmp/join; done; }
 export -f JOIN_EXPOSE
 nohup bash -c JOIN_EXPOSE &
 
@@ -128,7 +128,17 @@ echo 'Deploying flannel...'
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
 
 echo '====================== Kubernetes Cluster Status ======================'
-kubectl cluster-info
+kubectl cluster-info | grep --line-buffered '^'
+
+echo '====================== Deploying helm ======================'
+echo 'Installing helm client...'
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get 2> /dev/null | bash > /dev/null 2>&1
+echo 'Adding service account tiller...'
+kubectl create serviceaccount --namespace kube-system tiller > /dev/null 2>&1
+echo 'Adding cluster role binding for tiller service account...'
+kubectl create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-admin --serviceaccount=kube-system:tiller > /dev/null 2>&1
+echo 'Deploying helm tiller with service account tiller...'
+helm init --service-account tiller --upgrade > /dev/null 2>&1
 
 echo '====================== END ======================'
 MASTERSCRIPT
@@ -146,7 +156,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc ${MASTERIP} 8888 | tee kube_config
+nc -C -I 8192 ${MASTERIP} 8888 | tee kube_config
 echo 'Getting Join command from Master...'
 nc ${MASTERIP} 8889 | tee kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
@@ -171,7 +181,7 @@ else
 fi
 
 echo '====================== Kubernetes available nodes ======================'
-kubectl get nodes
+kubectl get nodes | grep --line-buffered '^'
 
 echo '====================== END ======================'
 WORKERSCRIPT
