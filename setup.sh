@@ -47,6 +47,8 @@ main() {
         kubectl config set-context "${KUBE_CONTEXT}" --cluster="${CLUSTER_NAME}" --user="${USER_NAME}"
         kubectl config use-context "${KUBE_CONTEXT}"
     fi
+    echo 'For helm based deployments please install helm client...'
+    echo 'Follow instructions https://docs.helm.sh/install/'
     exit 0
 }
 
