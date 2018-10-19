@@ -1,9 +1,13 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+# Global Variables
+BOX_IMAGE = "ubuntu/xenial64"
+NODE_COUNT = 2
+
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.9.10'
+KUBE_VERSION='1.9.11'
 GO_VERSION='1.10'
 DOCKER_VERSION='17.03'
 export DEBIAN_FRONTEND=noninteractive
@@ -125,7 +129,9 @@ nohup bash -c JOIN_EXPOSE &
 
 echo '====================== Deploy Flannel ======================'
 echo 'Deploying flannel...'
-kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
+curl https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml -O 2> /dev/null
+sed -i "s/- --ip-masq/- --iface=${NET_INTERFACE}\n        - --ip-masq/g" kube-flannel.yml
+kubectl apply -f kube-flannel.yml
 
 echo '====================== Kubernetes Cluster Status ======================'
 kubectl cluster-info | grep --line-buffered '^'
@@ -186,8 +192,6 @@ kubectl get nodes | grep --line-buffered '^'
 echo '====================== END ======================'
 WORKERSCRIPT
 
-BOX_IMAGE = "ubuntu/xenial64"
-NODE_COUNT = 3
 
 Vagrant.configure("2") do |config|
 
