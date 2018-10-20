@@ -151,7 +151,9 @@ if [[ ${NETWORKING} == 'flannel' ]]; then
   kubectl apply -f kube-flannel.yml
 elif [[ ${NETWORKING} == 'canal' ]]; then
   kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/rbac.yaml
-  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/canal.yaml
+  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/canal.yaml' -O 2> /dev/null
+  sed -i "s/\"--ip-masq\"/\"--iface=${NET_INTERFACE}\", \"--ip-masq\"/g" canal.yaml
+  kubectl apply -f canal.yaml
 elif [[ ${NETWORKING} == 'calico' ]]; then
   kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml
   curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml' -O 2> /dev/null
