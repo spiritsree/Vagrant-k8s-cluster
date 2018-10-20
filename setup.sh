@@ -11,6 +11,7 @@ NETWORKING_MODEL='flannel'
 NODE=2
 SCRIPT_NAME="$( basename "${BASH_SOURCE[0]}" )"
 RED='\033[0;31m'      # Red
+GREEN='\033[0;32m'    # Green
 NC='\033[0m'          # Color Reset
 
 # Usage help
@@ -141,8 +142,13 @@ main() {
     sed -i '' "s/NETWORKING_TYPE = nil/NETWORKING_TYPE = \"${NETWORKING_MODEL}\"/g" Vagrantfile
 
     # Deploy the cluster
-    echo "Deploying the Kubernetes cluster with ${NODE} worker nodes and ${NETWORKING_MODEL} networking..."
+    echo -e "\n ${GREEN}Deploying the Kubernetes cluster with ${NODE} worker nodes and ${NETWORKING_MODEL} networking...${NC} \n"
     vagrant up
+
+    # Updating the Vagrantfile
+    sed -i '' "s/WORKER_COUNT = ${NODE}/WORKER_COUNT = nil/g" Vagrantfile
+    sed -i '' "s/NETWORKING_TYPE = \"${NETWORKING_MODEL}\"/NETWORKING_TYPE = nil/g" Vagrantfile
+
     trap _cleanup EXIT
     nc master.local 8888 > ${KUBE_CONFIG}
     cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
