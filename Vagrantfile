@@ -3,7 +3,20 @@
 
 # Global Variables
 BOX_IMAGE = "ubuntu/xenial64"
-NODE_COUNT = 2
+WORKER_COUNT = nil
+NETWORKING_TYPE = nil
+
+if WORKER_COUNT.nil? || WORKER_COUNT.empty?
+  NODE_COUNT = 2
+else
+  NODE_COUNT = WORKER_COUNT
+end
+
+if NETWORKING_TYPE.nil? || NETWORKING_TYPE.empty?
+  NETWORKING_MODEL = "flannel"
+else
+  NETWORKING_MODEL = NETWORKING_TYPE
+end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
@@ -89,6 +102,7 @@ $masterscript = <<-'MASTERSCRIPT'
 export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
 export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
+export NETWORKING=$1
 echo This VM has IP address $IPADDR and name $NODENAME
 echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
@@ -127,11 +141,25 @@ JOIN_EXPOSE() { rm -f /tmp/join; mkfifo /tmp/join; while :; do cat /tmp/join | /
 export -f JOIN_EXPOSE
 nohup bash -c JOIN_EXPOSE &
 
-echo '====================== Deploy Flannel ======================'
-echo 'Deploying flannel...'
-curl https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml -O 2> /dev/null
-sed -i "s/- --ip-masq/- --iface=${NET_INTERFACE}\n        - --ip-masq/g" kube-flannel.yml
-kubectl apply -f kube-flannel.yml
+echo '====================== Deploy Networking ======================'
+echo "Selected networking model is ${NETWORKING} ..."
+
+if [[ ${NETWORKING} == 'flannel' ]]; then
+  echo 'Deploying flannel...'
+  curl 'https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml' -O 2> /dev/null
+  sed -i "s/- --ip-masq/- --iface=${NET_INTERFACE}\n        - --ip-masq/g" kube-flannel.yml
+  kubectl apply -f kube-flannel.yml
+elif [[ ${NETWORKING} == 'canal' ]]; then
+  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/rbac.yaml
+  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/canal.yaml
+elif [[ ${NETWORKING} == 'calico' ]]; then
+  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml
+  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml' -O 2> /dev/null
+  sed -i 's/192.168.0.0/10.244.0.0/g' calico.yaml
+  kubectl apply -f calico.yaml
+elif [[ ${NETWORKING} == 'weavenet' ]]; then
+  kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+fi
 
 echo '====================== Kubernetes Cluster Status ======================'
 kubectl cluster-info | grep --line-buffered '^'
@@ -200,7 +228,7 @@ Vagrant.configure("2") do |config|
     master.vm.hostname = "master"
     master.vm.network "private_network", type: "dhcp"
     master.vm.provision "shell", inline: $script
-    master.vm.provision "shell", inline: $masterscript
+    master.vm.provision "shell", inline: $masterscript, args: NETWORKING_MODEL
   end
 
   (1..NODE_COUNT).each do |i|
