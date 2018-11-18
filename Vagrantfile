@@ -20,7 +20,7 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.9.11'
+KUBE_VERSION='1.10.9'
 GO_VERSION='1.10'
 DOCKER_VERSION='17.03'
 export DEBIAN_FRONTEND=noninteractive
@@ -132,7 +132,7 @@ fi
 
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
-CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | nc -C -I 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | nc -C -I 9001 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
@@ -192,7 +192,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc -C -I 8192 ${MASTERIP} 8888 | tee kube_config
+nc -C -I 9001 ${MASTERIP} 8888 | tee kube_config
 echo 'Getting Join command from Master...'
 nc ${MASTERIP} 8889 | tee kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
