@@ -188,7 +188,7 @@ git clone https://github.com/kubernetes-incubator/metrics-server.git > /dev/null
 # The below command is to fix metrics-server resolving the node name using internalIP and
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
-sed -Ein '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
 echo 'Deploying metrics-server...'
 kubectl create -f ./metrics-server/deploy/1.8+/ > /dev/null 2>&1
 
