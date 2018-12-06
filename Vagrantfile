@@ -73,7 +73,13 @@ echo 'Commented swap partition from fstab...'
 echo '====================== Configure cgroup to systemd ======================'
 echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
-sed -i '0,/ExecStart=/ s//Environment="KUBELET_EXTRA_ARGS=--cgroup-driver=systemd"\n&/' /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+# Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
+if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authentication-token-webhook=true' | wc -l) -eq 0 ]]; then
+  E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true"
+else
+  E_ARG_PARAM="--cgroup-driver=systemd"
+fi
+sed -i "0,/ExecStart=/ s//Environment=\"KUBELET_EXTRA_ARGS=${E_ARG_PARAM}\"\n&/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 echo 'Changing Docker cgroup type to systemd...'
 cat <<EOF >/etc/docker/daemon.json
 {
@@ -175,6 +181,16 @@ echo 'Adding cluster role binding for tiller service account...'
 kubectl create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-admin --serviceaccount=kube-system:tiller > /dev/null 2>&1
 echo 'Deploying helm tiller with service account tiller...'
 helm init --service-account tiller --upgrade > /dev/null 2>&1
+
+echo '====================== Deploying metrics-server ======================'
+echo 'Cloning kubernetes-incubator/metrics-server.git repository...'
+git clone https://github.com/kubernetes-incubator/metrics-server.git > /dev/null 2>&1
+# The below command is to fix metrics-server resolving the node name using internalIP and
+# also to avoid getting error on TLS connection due to the IP not being there in the
+# subject alternate names in client certificate.
+sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+echo 'Deploying metrics-server...'
+kubectl create -f ./metrics-server/deploy/1.8+/ > /dev/null 2>&1
 
 echo '====================== END ======================'
 MASTERSCRIPT
