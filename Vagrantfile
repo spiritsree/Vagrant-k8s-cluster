@@ -26,6 +26,7 @@ DOCKER_VERSION='17.03'
 export DEBIAN_FRONTEND=noninteractive
 echo '====================== Install mdns ======================'
 echo -n 'Install avahi-daemon and mdns: '
+apt-get update > /dev/null
 apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
@@ -56,6 +57,13 @@ echo '====================== Install Go ======================'
 echo -n 'Download and install go: '
 curl -O https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz 2> /dev/null && tar -xzf go${GO_VERSION}.linux-amd64.tar.gz -C /usr/local
 [[ $? -eq 0 ]] && { echo OK; echo 'export GOROOT=/usr/local/go' >> /etc/profile; echo 'export PATH=$PATH:$GOROOT/bin' >> /etc/profile; source /etc/profile; }
+
+echo '====================== Setup Go ======================'
+mkdir -p /go/{bin,src}
+export GOPATH=/go
+echo "export GOPATH=/go" >> /etc/profile
+export PATH=$PATH:$GOPATH/bin
+echo "export PATH=$PATH:$GOPATH/bin" >> /etc/profile
 
 echo '====================== Install crictl ======================'
 echo -n 'Install crictl: '
