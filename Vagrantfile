@@ -32,7 +32,7 @@ apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
 echo '====================== Adding apt-keys ======================'
-apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl software-properties-common > /dev/null
+apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common > /dev/null
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
@@ -105,6 +105,8 @@ EOF
 # Loading ip_vs modules to avoidwarning https://github.com/kubernetes/kubeadm/issues/975
 echo 'Loading ip_vs kernel...'
 modprobe -a ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack_ipv4
+echo "8192" > /proc/sys/net/ipv4/tcp_rmem
+echo "8192" > /proc/sys/net/ipv4/tcp_wmem
 
 echo '====================== Reload services ======================'
 echo 'Reloading kubelet and docker...'
@@ -133,7 +135,8 @@ echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 
 echo '====================== Initialize Kubeadm ======================'
-kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --ignore-preflight-errors=cri | tee kubeinit.out
+kube_version=$(kubectl version --client --short -o json | jq '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
+kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
 echo "$(cat kubeinit.out | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//') --ignore-preflight-errors=cri" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
@@ -157,7 +160,8 @@ fi
 
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
-CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | nc -C -I 9001 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
+echo '' >> /etc/kubernetes/admin.conf
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | gzip -f | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
@@ -227,9 +231,9 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc -C -I 9001 ${MASTERIP} 8888 | tee kube_config
+nc -C -I 8192 ${MASTERIP} 8888 | gunzip > kube_config
 echo 'Getting Join command from Master...'
-nc ${MASTERIP} 8889 | tee kube_join
+nc ${MASTERIP} 8889 > kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
 
 echo '====================== Kubeadm Join cluster ======================'
