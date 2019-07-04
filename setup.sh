@@ -144,13 +144,20 @@ main() {
     # Deploy the cluster
     echo -e "\n ${GREEN}Deploying the Kubernetes cluster with ${NODE} worker nodes and ${NETWORKING_MODEL} networking...${NC} \n"
     vagrant up
+    echo "Cluster setup complete..."
 
     # Updating the Vagrantfile
+    echo "Doing the cleanups..."
     sed -i '' "s/WORKER_COUNT = ${NODE}/WORKER_COUNT = nil/g" Vagrantfile
     sed -i '' "s/NETWORKING_TYPE = \"${NETWORKING_MODEL}\"/NETWORKING_TYPE = nil/g" Vagrantfile
 
     trap _cleanup EXIT
-    nc master.local 8888 > ${KUBE_CONFIG}
+    echo "Taking backup of $HOME/.kube/config"
+    if [[ -f $HOME/.kube/config ]]; then
+        cp $HOME/.kube/config $HOME/.kube/config.bak
+    fi
+    echo "Getting the Kube Config from master..."
+    nc master.local 8888 | gunzip > ${KUBE_CONFIG}
     cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
     ${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.certificate-authority-data | base64 -D > ${CA_CERT_FILE}
     ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-certificate-data | base64 -D > ${USER_CERT_FILE}

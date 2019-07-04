@@ -20,35 +20,44 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.11.8'
+KUBE_VERSION='1.12.9'
 GO_VERSION='1.10'
-DOCKER_VERSION='17.03'
+DOCKER_VERSION='18.06'
 export DEBIAN_FRONTEND=noninteractive
+export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
 echo -n 'Install avahi-daemon and mdns: '
 apt-get update > /dev/null
 apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
-echo '====================== Install Docker ======================'
-apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl software-properties-common > /dev/null
+echo '====================== Adding apt-keys ======================'
+apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common > /dev/null
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
 add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"
-[[ $? -eq 0 ]] && echo OK
-echo -n 'Install Docker-CE: '
-apt-get update > /dev/null && apt-get install -y docker-ce=$(apt-cache madison docker-ce | grep ${DOCKER_VERSION} | head -1 | awk '{print $3}') > /dev/null
-[[ $? -eq 0 ]] && echo OK
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"; exit 1; }
 
-echo '====================== Install Kubernetes ======================'
 echo -n 'Add google cloud apt-key: '
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 echo -n 'Add kubernetes apt-repository: '
-add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main"
+add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main" > /dev/null
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
+apt-get update > /dev/null
+echo '====================== Install Docker ======================'
+echo -n 'Install Docker-CE: '
+docker_image_version=$(apt-cache madison docker-ce | grep ${DOCKER_VERSION} | head -1 | awk '{print $3}')
+if [[ -z ${docker_image_version} ]]; then
+  echo "Error: Docker image with version ${DOCKER_VERSION} not found !!!"
+  exit 1
+fi
+apt-get install -y docker-ce="${docker_image_version}" > /dev/null
 [[ $? -eq 0 ]] && echo OK
+
+echo '====================== Install Kubernetes ======================'
 echo -n 'Install Kubernetes: '
-apt-get update > /dev/null && apt-get install -y kubeadm=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
+apt-get install -y kubeadm=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
 kubectl=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
 kubelet=$(apt-cache madison kubelet | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') > /dev/null
 [[ $? -eq 0 ]] && echo OK
@@ -93,6 +102,12 @@ cat <<EOF >/etc/docker/daemon.json
 }
 EOF
 
+# Loading ip_vs modules to avoidwarning https://github.com/kubernetes/kubeadm/issues/975
+echo 'Loading ip_vs kernel...'
+modprobe -a ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack_ipv4
+echo "8192" > /proc/sys/net/ipv4/tcp_rmem
+echo "8192" > /proc/sys/net/ipv4/tcp_wmem
+
 echo '====================== Reload services ======================'
 echo 'Reloading kubelet and docker...'
 systemctl daemon-reload
@@ -120,8 +135,9 @@ echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 
 echo '====================== Initialize Kubeadm ======================'
-kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --ignore-preflight-errors=cri | tee kubeinit.out
-echo "$(cat kubeinit.out | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//') --ignore-preflight-errors=cri" > /opt/join.cmd
+kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
+kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
+echo "$(cat kubeinit.out | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
 echo '====================== Traffic through iptables ======================'
@@ -144,7 +160,8 @@ fi
 
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
-CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | nc -C -I 9001 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
+echo '' >> /etc/kubernetes/admin.conf
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | gzip -f | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
@@ -214,9 +231,9 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc -C -I 9001 ${MASTERIP} 8888 | tee kube_config
+nc -C -I 8192 ${MASTERIP} 8888 | gunzip > kube_config
 echo 'Getting Join command from Master...'
-nc ${MASTERIP} 8889 | tee kube_join
+nc ${MASTERIP} 8889 > kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
 
 echo '====================== Kubeadm Join cluster ======================'
