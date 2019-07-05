@@ -1,4 +1,4 @@
-# Vagrant-k8s-cluster
+#### Vagrant-k8s-cluster
 
 This installs a test Kubernetes cluster in [vagrant](http://vagrantup.com/) using [virtualbox](https://www.virtualbox.org/) hosts..
 
