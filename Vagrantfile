@@ -137,7 +137,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Initialize Kubeadm ======================'
 kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
-echo "$(cat kubeinit.out | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
+echo "$(cat kubeinit.out | | sed ':a;N;$!ba;s/\\\n/ /g' | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
 echo '====================== Traffic through iptables ======================'
