@@ -89,10 +89,13 @@ echo '====================== Configure cgroup to systemd ======================'
 echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
+# Adding --node-ip=VAGRANT_NODE_IP so the pods can be reached from other nodes/api
+node_if=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
+node_ip=$(ifconfig ${node_if} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
 if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authentication-token-webhook=true' | wc -l) -eq 0 ]]; then
-  E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true"
+  E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true --node-ip=${node_ip}"
 else
-  E_ARG_PARAM="--cgroup-driver=systemd"
+  E_ARG_PARAM="--cgroup-driver=systemd --node-ip=${node_ip}"
 fi
 sed -i "0,/ExecStart=/ s//Environment=\"KUBELET_EXTRA_ARGS=${E_ARG_PARAM}\"\n&/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 echo 'Changing Docker cgroup type to systemd...'
@@ -137,7 +140,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Initialize Kubeadm ======================'
 kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
-echo "$(cat kubeinit.out | | sed ':a;N;$!ba;s/\\\n/ /g' | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
+echo "$(cat kubeinit.out | sed ':a;N;$!ba;s/\\\n/ /g' | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
 echo '====================== Traffic through iptables ======================'
@@ -211,7 +214,11 @@ git clone https://github.com/kubernetes-incubator/metrics-server.git > /dev/null
 # The below command is to fix metrics-server resolving the node name using internalIP and
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
-sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+if [[ $(grep 'args:'  metrics-server/deploy/1.8+/metrics-server-deployment.yaml | wc -l) == 1 ]]; then
+  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+else
+  sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+fi
 echo 'Deploying metrics-server...'
 kubectl create -f ./metrics-server/deploy/1.8+/ > /dev/null 2>&1
 
