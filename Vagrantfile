@@ -20,7 +20,7 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.14.8'
+KUBE_VERSION='1.14.10'
 GO_VERSION='1.10'
 DOCKER_VERSION='18.06'
 export DEBIAN_FRONTEND=noninteractive

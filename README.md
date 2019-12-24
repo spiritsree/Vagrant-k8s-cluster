@@ -39,3 +39,11 @@ You can destroy the cluster and kubectl config using `destroy.sh` script.
 ```
 $ sh destroy.sh
 ```
+
+
+## Supported Networking
+
+1. [flannel](https://github.com/coreos/flannel) (Default)
+1. [calico](https://www.projectcalico.org/)
+1. [canal](https://github.com/projectcalico/canal)
+1. [weavenet](https://www.weave.works/oss/net/)
