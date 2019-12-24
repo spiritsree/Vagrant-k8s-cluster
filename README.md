@@ -47,3 +47,9 @@ $ sh destroy.sh
 1. [calico](https://www.projectcalico.org/)
 1. [canal](https://github.com/projectcalico/canal)
 1. [weavenet](https://www.weave.works/oss/net/)
+
+## Other Networking
+
+1. [AWS-VPC-CNI](https://github.com/aws/amazon-vpc-cni-k8s)
+1. [Cilium](https://github.com/cilium/cilium)
+1. [..and more](https://kubernetes.io/docs/concepts/cluster-administration/networking/)
