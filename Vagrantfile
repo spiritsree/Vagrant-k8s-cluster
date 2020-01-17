@@ -20,9 +20,9 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.14.10'
+KUBE_VERSION='1.15.8'
 GO_VERSION='1.10'
-DOCKER_VERSION='18.06'
+DOCKER_VERSION='18.09'
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
@@ -58,7 +58,7 @@ apt-get install -y docker-ce="${docker_image_version}" > /dev/null
 echo '====================== Install Kubernetes ======================'
 echo -n 'Install Kubernetes: '
 apt-get install -y kubeadm=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
-kubectl=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
+kubectl=$(apt-cache madison kubectl | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
 kubelet=$(apt-cache madison kubelet | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
@@ -138,7 +138,7 @@ echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 
 echo '====================== Initialize Kubeadm ======================'
-kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
+kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor' | sed 's/+$//')
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
 echo "$(cat kubeinit.out | sed ':a;N;$!ba;s/\\\n/ /g' | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
