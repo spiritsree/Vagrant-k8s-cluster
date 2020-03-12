@@ -20,8 +20,8 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.15.9'
-GO_VERSION='1.10'
+KUBE_VERSION='1.16.7'
+GO_VERSION='1.11'
 DOCKER_VERSION='18.09'
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
@@ -214,13 +214,13 @@ git clone https://github.com/kubernetes-incubator/metrics-server.git > /dev/null
 # The below command is to fix metrics-server resolving the node name using internalIP and
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
-if [[ $(grep 'args:'  metrics-server/deploy/1.8+/metrics-server-deployment.yaml | wc -l) == 1 ]]; then
-  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+if [[ $(grep 'args:'  metrics-server/deploy/kubernetes/metrics-server-deployment.yaml | wc -l) == 1 ]]; then
+  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' ./metrics-server/deploy/kubernetes/metrics-server-deployment.yaml
 else
-  sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/1.8+/metrics-server-deployment.yaml
+  sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/kubernetes/metrics-server-deployment.yaml
 fi
 echo 'Deploying metrics-server...'
-kubectl create -f ./metrics-server/deploy/1.8+/ > /dev/null 2>&1
+kubectl create -f ./metrics-server/deploy/kubernetes/ > /dev/null 2>&1
 
 echo '====================== END ======================'
 MASTERSCRIPT
