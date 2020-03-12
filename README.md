@@ -53,3 +53,7 @@ $ sh destroy.sh
 1. [AWS-VPC-CNI](https://github.com/aws/amazon-vpc-cni-k8s)
 1. [Cilium](https://github.com/cilium/cilium)
 1. [..and more](https://kubernetes.io/docs/concepts/cluster-administration/networking/)
+
+## Reference
+
+1. [Kubeadm install](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
