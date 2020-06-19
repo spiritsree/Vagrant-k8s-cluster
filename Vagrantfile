@@ -20,9 +20,10 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.16.7'
-GO_VERSION='1.11'
+KUBE_VERSION='1.16.11'
+GO_VERSION='1.12'
 DOCKER_VERSION='18.09'
+CRICTL_VERSION='1.18.0'
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
@@ -64,7 +65,8 @@ kubelet=$(apt-cache madison kubelet | grep ${KUBE_VERSION} |  head -1 | awk '{pr
 
 echo '====================== Install and Setup Go ======================'
 echo -n 'Download and install go: '
-curl -O https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz 2> /dev/null && tar -xzf go${GO_VERSION}.linux-amd64.tar.gz -C /usr/local
+curl -O https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz 2> /dev/null && \
+tar -xzf go${GO_VERSION}.linux-amd64.tar.gz -C /usr/local
 [[ $? -eq 0 ]] && { echo OK; echo 'export GOROOT=/usr/local/go' >> /etc/profile; echo 'export PATH=$PATH:$GOROOT/bin' >> /etc/profile; source /etc/profile; }
 mkdir -p /go/{bin,src}
 export GOPATH=/go
@@ -74,8 +76,10 @@ echo "export PATH=$PATH:$GOPATH/bin" >> /etc/profile
 
 echo '====================== Install crictl ======================'
 echo -n 'Install crictl: '
-go get github.com/kubernetes-incubator/cri-tools/cmd/crictl
+curl -sSLO https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz && \
+tar zxf crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
 [[ $? -eq 0 ]] && echo OK
+rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
 
 echo '====================== Swap Off ======================'
 cat /proc/swaps
@@ -209,18 +213,18 @@ echo 'Deploying helm tiller with service account tiller...'
 helm init --service-account tiller --upgrade > /dev/null 2>&1
 
 echo '====================== Deploying metrics-server ======================'
-echo 'Cloning kubernetes-incubator/metrics-server.git repository...'
-git clone https://github.com/kubernetes-incubator/metrics-server.git > /dev/null 2>&1
+echo 'Get the metric-server deployment manifest...'
+curl -sSLO  https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.3.6/components.yaml
 # The below command is to fix metrics-server resolving the node name using internalIP and
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
-if [[ $(grep 'args:'  metrics-server/deploy/kubernetes/metrics-server-deployment.yaml | wc -l) == 1 ]]; then
-  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' ./metrics-server/deploy/kubernetes/metrics-server-deployment.yaml
+if [[ $(grep 'args:' components.yaml | wc -l) == 1 ]]; then
+  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' components.yaml
 else
-  sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' ./metrics-server/deploy/kubernetes/metrics-server-deployment.yaml
+  sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' components.yaml
 fi
 echo 'Deploying metrics-server...'
-kubectl create -f ./metrics-server/deploy/kubernetes/ > /dev/null 2>&1
+kubectl create -f components.yaml > /dev/null 2>&1
 
 echo '====================== END ======================'
 MASTERSCRIPT

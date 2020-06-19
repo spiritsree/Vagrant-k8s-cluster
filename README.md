@@ -56,4 +56,8 @@ $ sh destroy.sh
 
 ## Reference
 
+1. [Critool](https://github.com/kubernetes-sigs/cri-tools)
+1. [Helm](https://github.com/helm/helm)
 1. [Kubeadm install](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
+1. [Kubernetes](https://github.com/kubernetes/kubernetes)
+1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server)
