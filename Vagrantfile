@@ -20,9 +20,9 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.16.15'
+KUBE_VERSION='1.17.17'
 GO_VERSION='1.13'
-DOCKER_VERSION='18.09'
+DOCKER_VERSION='19.03'
 CRICTL_VERSION='1.18.0'
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
