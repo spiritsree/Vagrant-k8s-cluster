@@ -16,12 +16,12 @@ NC='\033[0m'          # Color Reset
 
 # Usage help
 _usage() {
-    if [[ ! -z $@ ]]; then
-        size=`echo $@ | wc -c`
-        length=$((${size} + 7 + 5))
-        printf "#%.0s" {1..${length}}
-        echo -e "\n# ${RED}ERROR:${NC} $@"
-        printf '#%.0s' {1..${length}}
+    if [[ -n "$*" ]]; then
+        size=$(echo "$*" | wc -c)
+        length=$((size + 7 + 5))
+        seq -s# ${length}|tr -d '[:digit:]'
+        echo -e "\n#  ${RED}ERROR:${NC} $*  #"
+        seq -s# ${length}|tr -d '[:digit:]'
         echo
     fi
     echo 'Kubernetes cluster setup on vagrant.'
@@ -124,7 +124,7 @@ _cleanup() {
 }
 
 main() {
-    _getOptions $@
+    _getOptions "$@"
     yq_bin=$(which yq)
     vagrant_bin=$(which vagrant)
     if [[ -z ${yq_bin} ]]; then
@@ -137,7 +137,6 @@ main() {
         exit 1
     fi
     yq_version=$(${yq_bin} --version | sed -E 's/^.* ([0-9]+)\.[0-9]+.[0-9]+/\1/')
-
     # Updating the Vagrantfile
     sed -i '' "s/WORKER_COUNT = nil/WORKER_COUNT = ${NODE}/g" Vagrantfile
     sed -i '' "s/NETWORKING_TYPE = nil/NETWORKING_TYPE = \"${NETWORKING_MODEL}\"/g" Vagrantfile
@@ -159,7 +158,7 @@ main() {
     fi
     echo "Getting the Kube Config from master..."
     nc master.local 8888 | gunzip > ${KUBE_CONFIG}
-    if [[ ${yq_version} < 4 ]]; then
+    if [[ ${yq_version} -lt 4 ]]; then
         cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
         ${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.certificate-authority-data | base64 -D > ${CA_CERT_FILE}
         ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-certificate-data | base64 -D > ${USER_CERT_FILE}
@@ -184,6 +183,6 @@ main() {
     exit 0
 }
 
-main $@
+main "$@"
 
 
