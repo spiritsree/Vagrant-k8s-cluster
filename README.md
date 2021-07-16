@@ -40,7 +40,6 @@ You can destroy the cluster and kubectl config using `destroy.sh` script.
 $ sh destroy.sh
 ```
 
-
 ## Supported Networking
 
 1. [flannel](https://github.com/coreos/flannel) (Default)
@@ -61,3 +60,27 @@ $ sh destroy.sh
 1. [Kubeadm install](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
 1. [Kubernetes](https://github.com/kubernetes/kubernetes)
 1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server)
+
+## Troubleshooting
+
+1. If you see an error as below while running the setup
+
+```
+There was an error while executing `VBoxManage`, a CLI used by Vagrant
+for controlling VirtualBox. The command and stderr is shown below.
+
+Command: ["hostonlyif", "create"]
+
+Stderr: 0%...
+Progress state: NS_ERROR_FAILURE
+```
+
+Do a reinstall of Virtualbox and allow `Oracle` from System Preferences > Security & Privacy
+
+## Versions
+
+Tested with below versions of the apps
+
+* Vagrant 2.2.17
+* VirtualBox 6.1.22
+* yq 4.6.1

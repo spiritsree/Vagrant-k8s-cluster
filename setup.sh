@@ -136,6 +136,7 @@ main() {
         echo 'Install using "brew cask install vagrant"'
         exit 1
     fi
+    yq_version=$(${yq_bin} --version | sed -E 's/^.* ([0-9]+)\.[0-9]+.[0-9]+/\1/')
 
     # Updating the Vagrantfile
     sed -i '' "s/WORKER_COUNT = nil/WORKER_COUNT = ${NODE}/g" Vagrantfile
@@ -158,10 +159,17 @@ main() {
     fi
     echo "Getting the Kube Config from master..."
     nc master.local 8888 | gunzip > ${KUBE_CONFIG}
-    cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
-    ${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.certificate-authority-data | base64 -D > ${CA_CERT_FILE}
-    ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-certificate-data | base64 -D > ${USER_CERT_FILE}
-    ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-key-data | base64 -D > ${USER_CERT_KEY}
+    if [[ ${yq_version} < 4 ]]; then
+        cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
+        ${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.certificate-authority-data | base64 -D > ${CA_CERT_FILE}
+        ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-certificate-data | base64 -D > ${USER_CERT_FILE}
+        ${yq_bin} read ${KUBE_CONFIG} users[0].user.client-key-data | base64 -D > ${USER_CERT_KEY}
+    else
+        cluster_server=$(${yq_bin} eval '.clusters[0].cluster.server' ${KUBE_CONFIG})
+        ${yq_bin} eval '.clusters[0].cluster.certificate-authority-data' ${KUBE_CONFIG} | base64 -D > ${CA_CERT_FILE}
+        ${yq_bin} eval '.users[0].user.client-certificate-data' ${KUBE_CONFIG} | base64 -D > ${USER_CERT_FILE}
+        ${yq_bin} eval '.users[0].user.client-key-data' ${KUBE_CONFIG} | base64 -D > ${USER_CERT_KEY}
+    fi
     if [[ -z ${cluster_server} ]] || [[ ! -s ${CA_CERT_FILE} ]] || [[ ! -s ${USER_CERT_FILE} ]] || [[ ! -s ${USER_CERT_KEY} ]]; then
         echo 'Either Certs or the Cluster server is empty.'
         exit 1
