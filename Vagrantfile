@@ -5,6 +5,11 @@
 BOX_IMAGE = "ubuntu/xenial64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
+KUBERNETES_VERSION = '1.17.17'
+GO_VERSION = '1.13'
+DOCKER_VERSION = '19.03'
+CRICTL_VERSION = '1.18.0'
+METRICS_SERVER_VERSION = '0.3.7'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -20,10 +25,10 @@ end
 
 # Common Script for both master and nodes to install everything.
 $script = <<-'SCRIPT'
-KUBE_VERSION='1.16.15'
-GO_VERSION='1.13'
-DOCKER_VERSION='18.09'
-CRICTL_VERSION='1.18.0'
+export KUBE_VERSION=$1
+export GO_VERSION=$2
+export DOCKER_VERSION=$3
+export CRICTL_VERSION=$4
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
@@ -137,6 +142,7 @@ export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
 export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export NETWORKING=$1
+export METRICS_SERVER=$2
 echo This VM has IP address $IPADDR and name $NODENAME
 echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
@@ -214,7 +220,7 @@ helm init --service-account tiller --upgrade > /dev/null 2>&1
 
 echo '====================== Deploying metrics-server ======================'
 echo 'Get the metric-server deployment manifest...'
-curl -sSLO  https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.3.6/components.yaml
+curl -sSLO  https://github.com/kubernetes-sigs/metrics-server/releases/download/v${METRICS_SERVER}/components.yaml
 # The below command is to fix metrics-server resolving the node name using internalIP and
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
@@ -279,8 +285,14 @@ Vagrant.configure("2") do |config|
     master.vm.box = BOX_IMAGE
     master.vm.hostname = "master"
     master.vm.network "private_network", type: "dhcp"
-    master.vm.provision "shell", inline: $script
-    master.vm.provision "shell", inline: $masterscript, args: NETWORKING_MODEL
+    master.vm.provision "shell" do |script|
+      script.inline = $script
+      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+    end
+    master.vm.provision "shell" do |masterscript|
+      masterscript.inline = $masterscript
+      masterscript.args = [NETWORKING_MODEL, METRICS_SERVER_VERSION]
+    end
   end
 
   (1..NODE_COUNT).each do |i|
@@ -288,7 +300,10 @@ Vagrant.configure("2") do |config|
       node.vm.box = BOX_IMAGE
       node.vm.hostname = "node-#{i}"
       node.vm.network "private_network", type: "dhcp"
-      node.vm.provision "shell", inline: $script
+      node.vm.provision "shell" do |script|
+       script.inline = $script
+       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+      end
       node.vm.provision "shell", inline: $workerscript
     end
   end
