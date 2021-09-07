@@ -5,10 +5,10 @@
 BOX_IMAGE = "ubuntu/xenial64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.19.13'
+KUBERNETES_VERSION = '1.20.10'
 GO_VERSION = '1.15'
 DOCKER_VERSION = '19.03'
-CRICTL_VERSION = '1.18.0'
+CRICTL_VERSION = '1.20.0'
 METRICS_SERVER_VERSION = '0.3.7'
 
 if WORKER_COUNT.nil?
@@ -281,6 +281,9 @@ WORKERSCRIPT
 
 Vagrant.configure("2") do |config|
 
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "1750"
+  end
   config.vm.define "master" do |master|
     master.vm.box = BOX_IMAGE
     master.vm.hostname = "master"
