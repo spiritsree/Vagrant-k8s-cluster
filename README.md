@@ -78,11 +78,14 @@ Progress state: NS_ERROR_FAILURE
 
 Do a reinstall of Virtualbox and allow `Oracle` from System Preferences > Security & Privacy
 
+2. Using Virtualbox 6.1.28 onwards need more configuration for host-only network. Details [here](https://www.virtualbox.org/manual/ch06.html#network_hostonly) also the [Changelog](https://www.virtualbox.org/manual/UserManual.html#idp10525536)
+
+
 ## Versions
 
 Tested with below versions of the apps
 
 * Vagrant 2.2.17
-* VirtualBox 6.1.32
+* VirtualBox 6.1.26 (higher versions have issue with host-only network)
 * yq 4.6.1
 * ubuntu/xenial64 20210623.0.0
