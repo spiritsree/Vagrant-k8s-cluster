@@ -83,5 +83,6 @@ Do a reinstall of Virtualbox and allow `Oracle` from System Preferences > Securi
 Tested with below versions of the apps
 
 * Vagrant 2.2.17
-* VirtualBox 6.1.22
+* VirtualBox 6.1.32
 * yq 4.6.1
+* ubuntu/xenial64 20210623.0.0
