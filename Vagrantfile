@@ -5,11 +5,12 @@
 BOX_IMAGE = "ubuntu/xenial64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.19.13'
+KUBERNETES_VERSION = '1.20.15'
 GO_VERSION = '1.15'
 DOCKER_VERSION = '19.03'
-CRICTL_VERSION = '1.18.0'
+CRICTL_VERSION = '1.20.0'
 METRICS_SERVER_VERSION = '0.3.7'
+METALLB_VERSION = '0.10.2'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -143,6 +144,8 @@ export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut
 export NODENAME=$(hostname -s)
 export NETWORKING=$1
 export METRICS_SERVER=$2
+export METALLB_VER=$3
+
 echo This VM has IP address $IPADDR and name $NODENAME
 echo "$IPADDR  $NODENAME" >> /etc/hosts
 echo "$IPADDR  $NODENAME.local" >> /etc/hosts
@@ -232,6 +235,20 @@ fi
 echo 'Deploying metrics-server...'
 kubectl create -f components.yaml > /dev/null 2>&1
 
+echo '====================== Deploying MetalLB ======================'
+echo 'Get the MetalLB manifest...'
+curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/namespace.yaml
+curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/metallb.yaml
+echo 'Deploying MetalLB...'
+kubectl create -f namespace.yaml > /dev/null 2>&1
+kubectl create -f metallb.yaml > /dev/null 2>&1
+curl -sSLO https://raw.githubusercontent.com/spiritsree/Vagrant-k8s-cluster/master/configs/metallb-config.yaml
+export IPF=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".240" }')
+export IPL=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".250" }')
+sed -i "s/IPF/${IPF}/g" metallb-config.yaml
+sed -i "s/IPL/${IPL}/g" metallb-config.yaml
+kubectl create -f metallb-config.yaml > /dev/null 2>&1
+
 echo '====================== END ======================'
 MASTERSCRIPT
 
@@ -281,6 +298,9 @@ WORKERSCRIPT
 
 Vagrant.configure("2") do |config|
 
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "1750"
+  end
   config.vm.define "master" do |master|
     master.vm.box = BOX_IMAGE
     master.vm.hostname = "master"
@@ -291,7 +311,7 @@ Vagrant.configure("2") do |config|
     end
     master.vm.provision "shell" do |masterscript|
       masterscript.inline = $masterscript
-      masterscript.args = [NETWORKING_MODEL, METRICS_SERVER_VERSION]
+      masterscript.args = [NETWORKING_MODEL, METRICS_SERVER_VERSION, METALLB_VERSION]
     end
   end
 

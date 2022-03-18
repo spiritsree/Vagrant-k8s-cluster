@@ -60,6 +60,7 @@ $ sh destroy.sh
 1. [Kubeadm install](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
 1. [Kubernetes](https://github.com/kubernetes/kubernetes)
 1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server)
+1. [MetalLB](https://github.com/metallb/metallb)
 
 ## Troubleshooting
 
