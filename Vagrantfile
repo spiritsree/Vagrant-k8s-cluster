@@ -5,11 +5,11 @@
 BOX_IMAGE = "ubuntu/xenial64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.20.15'
+KUBERNETES_VERSION = '1.21.11'
 GO_VERSION = '1.15'
 DOCKER_VERSION = '19.03'
-CRICTL_VERSION = '1.20.0'
-METRICS_SERVER_VERSION = '0.3.7'
+CRICTL_VERSION = '1.21.0'
+METRICS_SERVER_VERSION = '0.6.1'
 METALLB_VERSION = '0.10.2'
 
 if WORKER_COUNT.nil?
@@ -43,14 +43,14 @@ apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certific
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
-add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"
-[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"; exit 1; }
+add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null; exit 1; }
 
 echo -n 'Add google cloud apt-key: '
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 echo -n 'Add kubernetes apt-repository: '
-add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main" > /dev/null
-[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
+add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /dev/null
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-xenial main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
 apt-get update > /dev/null
 echo '====================== Install Docker ======================'
 echo -n 'Install Docker-CE: '
@@ -100,8 +100,8 @@ echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
 # Adding --node-ip=VAGRANT_NODE_IP so the pods can be reached from other nodes/api
-node_if=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-node_ip=$(ifconfig ${node_if} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+node_if=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+node_ip=$(ifconfig ${node_if} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authentication-token-webhook=true' | wc -l) -eq 0 ]]; then
   E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true --node-ip=${node_ip}"
 else
@@ -139,8 +139,8 @@ SCRIPT
 # Master Script to initialize and setup Kubernetes Master.
 $masterscript = <<-'MASTERSCRIPT'
 
-export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }' | tr -d ':')
+export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export NETWORKING=$1
 export METRICS_SERVER=$2
@@ -188,21 +188,20 @@ nohup bash -c JOIN_EXPOSE &
 
 echo '====================== Deploy Networking ======================'
 echo "Selected networking model is ${NETWORKING} ..."
-
+echo "Deploying ${NETWORKING}..."
 if [[ ${NETWORKING} == 'flannel' ]]; then
-  echo 'Deploying flannel...'
-  curl 'https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml' -O 2> /dev/null
+  curl 'https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml' -O 2> /dev/null
   sed -i "s/- --ip-masq/- --iface=${NET_INTERFACE}\n        - --ip-masq/g" kube-flannel.yml
   kubectl apply -f kube-flannel.yml
 elif [[ ${NETWORKING} == 'canal' ]]; then
-  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/rbac.yaml
-  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/canal.yaml' -O 2> /dev/null
+  curl -k 'https://projectcalico.docs.tigera.io/manifests/canal.yaml' -O 2> /dev/null
   sed -i "s/\"--ip-masq\"/\"--iface=${NET_INTERFACE}\", \"--ip-masq\"/g" canal.yaml
   kubectl apply -f canal.yaml
 elif [[ ${NETWORKING} == 'calico' ]]; then
-  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml
-  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml' -O 2> /dev/null
+  curl -k 'https://projectcalico.docs.tigera.io/manifests/calico.yaml' -O 2> /dev/null
   sed -i 's/192.168.0.0/10.244.0.0/g' calico.yaml
+  sed -i '/CALICO_IPV4POOL_CIDR/s/# //' calico.yaml
+  sed -i '/10.244.0.0/s/# //' calico.yaml
   kubectl apply -f calico.yaml
 elif [[ ${NETWORKING} == 'weavenet' ]]; then
   kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
@@ -228,7 +227,7 @@ curl -sSLO  https://github.com/kubernetes-sigs/metrics-server/releases/download/
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
 if [[ $(grep 'args:' components.yaml | wc -l) == 1 ]]; then
-  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' components.yaml
+  sed -Ei '0,/args:/ s/args:/args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP/' components.yaml
 else
   sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' components.yaml
 fi
@@ -254,8 +253,8 @@ MASTERSCRIPT
 
 # Worker Script to initialize and join the Master to form a cluster.
 $workerscript = <<-'WORKERSCRIPT'
-export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -e 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export CONFIG_READY=0
 echo This VM has IP address $IPADDR and name $NODENAME
@@ -299,7 +298,7 @@ WORKERSCRIPT
 Vagrant.configure("2") do |config|
 
   config.vm.provider "virtualbox" do |vb|
-    vb.memory = "1750"
+    vb.memory = "1800"
   end
   config.vm.define "master" do |master|
     master.vm.box = BOX_IMAGE
