@@ -2,15 +2,16 @@
 # vi: set ft=ruby :
 
 # Global Variables
-BOX_IMAGE = "ubuntu/xenial64"
+BOX_IMAGE = "ubuntu/bionic64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.20.15'
+KUBERNETES_VERSION = '1.21.11'
 GO_VERSION = '1.15'
 DOCKER_VERSION = '19.03'
-CRICTL_VERSION = '1.20.0'
-METRICS_SERVER_VERSION = '0.3.7'
-METALLB_VERSION = '0.10.2'
+CONTAINERD_VERSION = '1.6.1'
+CRICTL_VERSION = '1.21.0'
+METRICS_SERVER_VERSION = '0.6.1'
+METALLB_VERSION = '0.12.1'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -29,7 +30,8 @@ $script = <<-'SCRIPT'
 export KUBE_VERSION=$1
 export GO_VERSION=$2
 export DOCKER_VERSION=$3
-export CRICTL_VERSION=$4
+export CONTAINERD_VERSION=$4
+export CRICTL_VERSION=$5
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
@@ -39,18 +41,18 @@ apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
 echo '====================== Adding apt-keys ======================'
-apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common > /dev/null
+apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common libseccomp2 > /dev/null
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
-add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"
-[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable"; exit 1; }
+add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null; exit 1; }
 
 echo -n 'Add google cloud apt-key: '
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 echo -n 'Add kubernetes apt-repository: '
-add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main" > /dev/null
-[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-$(lsb_release -cs) main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
+add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /dev/null
+[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-xenial main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
 apt-get update > /dev/null
 echo '====================== Install Docker ======================'
 echo -n 'Install Docker-CE: '
@@ -61,6 +63,13 @@ if [[ -z ${docker_image_version} ]]; then
 fi
 apt-get install -y docker-ce="${docker_image_version}" > /dev/null
 [[ $? -eq 0 ]] && echo OK
+
+echo '==================== Install Containerd ===================='
+echo -n 'Install Containerd: '
+curl -sSLO https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz 2> /dev/null && \
+tar --no-overwrite-dir -C / -xzf cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+[[ $? -eq 0 ]] && echo OK
+systemctl start containerd
 
 echo '====================== Install Kubernetes ======================'
 echo -n 'Install Kubernetes: '
@@ -88,7 +97,7 @@ tar zxf crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
 rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
 
 echo '====================== Swap Off ======================'
-cat /proc/swaps
+[[ $(cat /proc/swaps | wc -l) -gt 1 ]] && cat /proc/swaps
 swapoff -a
 echo 'Swap is off...'
 [[ $(cat /etc/fstab | grep swap | wc -l) -gt 0 ]] && { sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab; }
@@ -96,12 +105,12 @@ echo 'Commented swap partition from fstab...'
 
 # Configure same cgroup for docker and kubernetes
 echo '====================== Configure cgroup to systemd ======================'
-echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
+echo -n 'Docker' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
 # Adding --node-ip=VAGRANT_NODE_IP so the pods can be reached from other nodes/api
-node_if=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-node_ip=$(ifconfig ${node_if} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+node_if=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+node_ip=$(ifconfig ${node_if} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authentication-token-webhook=true' | wc -l) -eq 0 ]]; then
   E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true --node-ip=${node_ip}"
 else
@@ -122,10 +131,11 @@ echo "8192" > /proc/sys/net/ipv4/tcp_rmem
 echo "8192" > /proc/sys/net/ipv4/tcp_wmem
 
 echo '====================== Reload services ======================'
-echo 'Reloading kubelet and docker...'
+echo 'Reloading kubelet, containerd and docker...'
 systemctl daemon-reload
 systemctl restart kubelet
 systemctl restart docker
+systemctl restart containerd
 
 echo '====================== Verify cgroup type ======================'
 echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
@@ -139,8 +149,8 @@ SCRIPT
 # Master Script to initialize and setup Kubernetes Master.
 $masterscript = <<-'MASTERSCRIPT'
 
-export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }' | tr -d ':')
+export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export NETWORKING=$1
 export METRICS_SERVER=$2
@@ -177,7 +187,7 @@ fi
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
 echo '' >> /etc/kubernetes/admin.conf
-CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | gzip -f | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | base64 | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
@@ -188,21 +198,20 @@ nohup bash -c JOIN_EXPOSE &
 
 echo '====================== Deploy Networking ======================'
 echo "Selected networking model is ${NETWORKING} ..."
-
+echo "Deploying ${NETWORKING}..."
 if [[ ${NETWORKING} == 'flannel' ]]; then
-  echo 'Deploying flannel...'
-  curl 'https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml' -O 2> /dev/null
+  curl 'https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml' -O 2> /dev/null
   sed -i "s/- --ip-masq/- --iface=${NET_INTERFACE}\n        - --ip-masq/g" kube-flannel.yml
   kubectl apply -f kube-flannel.yml
 elif [[ ${NETWORKING} == 'canal' ]]; then
-  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/rbac.yaml
-  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/canal/canal.yaml' -O 2> /dev/null
+  curl -k 'https://projectcalico.docs.tigera.io/manifests/canal.yaml' -O 2> /dev/null
   sed -i "s/\"--ip-masq\"/\"--iface=${NET_INTERFACE}\", \"--ip-masq\"/g" canal.yaml
   kubectl apply -f canal.yaml
 elif [[ ${NETWORKING} == 'calico' ]]; then
-  kubectl apply -f https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml
-  curl 'https://docs.projectcalico.org/v3.1/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml' -O 2> /dev/null
+  curl -k 'https://projectcalico.docs.tigera.io/manifests/calico.yaml' -O 2> /dev/null
   sed -i 's/192.168.0.0/10.244.0.0/g' calico.yaml
+  sed -i '/CALICO_IPV4POOL_CIDR/s/# //' calico.yaml
+  sed -i '/10.244.0.0/s/# //' calico.yaml
   kubectl apply -f calico.yaml
 elif [[ ${NETWORKING} == 'weavenet' ]]; then
   kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
@@ -228,7 +237,7 @@ curl -sSLO  https://github.com/kubernetes-sigs/metrics-server/releases/download/
 # also to avoid getting error on TLS connection due to the IP not being there in the
 # subject alternate names in client certificate.
 if [[ $(grep 'args:' components.yaml | wc -l) == 1 ]]; then
-  sed -Ei '0,/args:/ s/args:/args:\n          - --kubelet-insecure-tls\n          - --kubelet-preferred-address-types=InternalIP/' components.yaml
+  sed -Ei '0,/args:/ s/args:/args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP/' components.yaml
 else
   sed -Ei '0,/image: k8s\.gcr\.io\/metrics-server-amd64:v[0-9]+\.[0-9]+\.[0-9]+/ s//args:\n        - --kubelet-insecure-tls\n        - --kubelet-preferred-address-types=InternalIP\n        &/' components.yaml
 fi
@@ -254,8 +263,8 @@ MASTERSCRIPT
 
 # Worker Script to initialize and join the Master to form a cluster.
 $workerscript = <<-'WORKERSCRIPT'
-export NET_INTERFACE=$(ifconfig | grep -B2 172 | grep enp0 | awk '{ print $1 }')
-export IPADDR=$(ifconfig ${NET_INTERFACE} | grep Mask | awk '{ print $2 }' | cut -d: -f2)
+export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -e 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export CONFIG_READY=0
 echo This VM has IP address $IPADDR and name $NODENAME
@@ -265,7 +274,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc -C -I 8192 ${MASTERIP} 8888 | gunzip > kube_config
+nc -w3 -C -I 8192 ${MASTERIP} 8888 | base64 -d -i > kube_config
 echo 'Getting Join command from Master...'
 nc ${MASTERIP} 8889 > kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
@@ -299,7 +308,7 @@ WORKERSCRIPT
 Vagrant.configure("2") do |config|
 
   config.vm.provider "virtualbox" do |vb|
-    vb.memory = "1750"
+    vb.memory = "1800"
   end
   config.vm.define "master" do |master|
     master.vm.box = BOX_IMAGE
@@ -307,7 +316,7 @@ Vagrant.configure("2") do |config|
     master.vm.network "private_network", type: "dhcp"
     master.vm.provision "shell" do |script|
       script.inline = $script
-      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
     end
     master.vm.provision "shell" do |masterscript|
       masterscript.inline = $masterscript
@@ -322,7 +331,7 @@ Vagrant.configure("2") do |config|
       node.vm.network "private_network", type: "dhcp"
       node.vm.provision "shell" do |script|
        script.inline = $script
-       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
       end
       node.vm.provision "shell", inline: $workerscript
     end
