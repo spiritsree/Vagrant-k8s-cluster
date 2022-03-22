@@ -97,7 +97,7 @@ tar zxf crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
 rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
 
 echo '====================== Swap Off ======================'
-cat /proc/swaps
+[[ $(cat /proc/swaps | wc -l) -gt 1 ]] && cat /proc/swaps
 swapoff -a
 echo 'Swap is off...'
 [[ $(cat /etc/fstab | grep swap | wc -l) -gt 0 ]] && { sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab; }
@@ -105,7 +105,7 @@ echo 'Commented swap partition from fstab...'
 
 # Configure same cgroup for docker and kubernetes
 echo '====================== Configure cgroup to systemd ======================'
-echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
+echo -n 'Docker' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
 # Adding --node-ip=VAGRANT_NODE_IP so the pods can be reached from other nodes/api
