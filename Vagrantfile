@@ -2,15 +2,16 @@
 # vi: set ft=ruby :
 
 # Global Variables
-BOX_IMAGE = "ubuntu/xenial64"
+BOX_IMAGE = "ubuntu/bionic64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
 KUBERNETES_VERSION = '1.21.11'
 GO_VERSION = '1.15'
 DOCKER_VERSION = '19.03'
+CONTAINERD_VERSION = '1.6.1'
 CRICTL_VERSION = '1.21.0'
 METRICS_SERVER_VERSION = '0.6.1'
-METALLB_VERSION = '0.10.2'
+METALLB_VERSION = '0.12.1'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -29,7 +30,8 @@ $script = <<-'SCRIPT'
 export KUBE_VERSION=$1
 export GO_VERSION=$2
 export DOCKER_VERSION=$3
-export CRICTL_VERSION=$4
+export CONTAINERD_VERSION=$4
+export CRICTL_VERSION=$5
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 echo '====================== Install mdns ======================'
@@ -39,7 +41,7 @@ apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
 echo '====================== Adding apt-keys ======================'
-apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common > /dev/null
+apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common libseccomp2 > /dev/null
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
@@ -61,6 +63,13 @@ if [[ -z ${docker_image_version} ]]; then
 fi
 apt-get install -y docker-ce="${docker_image_version}" > /dev/null
 [[ $? -eq 0 ]] && echo OK
+
+echo '==================== Install Containerd ===================='
+echo -n 'Install Containerd: '
+curl -sSLO https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz 2> /dev/null && \
+tar --no-overwrite-dir -C / -xzf cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+[[ $? -eq 0 ]] && echo OK
+systemctl start containerd
 
 echo '====================== Install Kubernetes ======================'
 echo -n 'Install Kubernetes: '
@@ -122,10 +131,11 @@ echo "8192" > /proc/sys/net/ipv4/tcp_rmem
 echo "8192" > /proc/sys/net/ipv4/tcp_wmem
 
 echo '====================== Reload services ======================'
-echo 'Reloading kubelet and docker...'
+echo 'Reloading kubelet, containerd and docker...'
 systemctl daemon-reload
 systemctl restart kubelet
 systemctl restart docker
+systemctl restart containerd
 
 echo '====================== Verify cgroup type ======================'
 echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
@@ -177,7 +187,7 @@ fi
 echo '====================== Expose configs ======================'
 echo 'Exposing ~/.kube/config on port 8888 ...'
 echo '' >> /etc/kubernetes/admin.conf
-CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | gzip -f | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
+CONFIG_EXPOSE() { rm -f /tmp/conf; mkfifo /tmp/conf; while :; do cat /tmp/conf | /bin/cat /etc/kubernetes/admin.conf | base64 | nc -C -O 8192 -l $IPADDR -p 8888 -q 1 > /tmp/conf; done; }
 export -f CONFIG_EXPOSE
 nohup bash -c CONFIG_EXPOSE &
 
@@ -264,7 +274,7 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 echo '====================== Get Configs from Master ======================'
 export MASTERIP=$(getent ahosts master.local | awk '{ print $1 }' | head -1)
 echo 'Getting Config from Master...'
-nc -C -I 8192 ${MASTERIP} 8888 | gunzip > kube_config
+nc -w3 -C -I 8192 ${MASTERIP} 8888 | base64 -d -i > kube_config
 echo 'Getting Join command from Master...'
 nc ${MASTERIP} 8889 > kube_join
 [[ ! -s kube_config ]] &&  CONFIG_READY=1
@@ -306,7 +316,7 @@ Vagrant.configure("2") do |config|
     master.vm.network "private_network", type: "dhcp"
     master.vm.provision "shell" do |script|
       script.inline = $script
-      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
     end
     master.vm.provision "shell" do |masterscript|
       masterscript.inline = $masterscript
@@ -321,7 +331,7 @@ Vagrant.configure("2") do |config|
       node.vm.network "private_network", type: "dhcp"
       node.vm.provision "shell" do |script|
        script.inline = $script
-       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CRICTL_VERSION]
+       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
       end
       node.vm.provision "shell", inline: $workerscript
     end

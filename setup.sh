@@ -157,7 +157,7 @@ main() {
         cp $HOME/.kube/config $HOME/.kube/config.bak
     fi
     echo "Getting the Kube Config from master..."
-    nc master.local 8888 | gunzip > ${KUBE_CONFIG}
+    nc master.local 8888 | base64 -d -o ${KUBE_CONFIG}
     if [[ ${yq_version} -lt 4 ]]; then
         cluster_server=$(${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.server)
         ${yq_bin} read ${KUBE_CONFIG} clusters[0].cluster.certificate-authority-data | base64 -D > ${CA_CERT_FILE}
