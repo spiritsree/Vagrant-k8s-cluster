@@ -113,8 +113,8 @@ $ cat /etc/vbox/networks.conf
 
 Tested with below versions of the apps
 
-* Vagrant 2.3.4
-* VirtualBox 6.1.40 (6.1.28 and higher versions have issue with host-only network. Pls check the troubleshooting section for details)
+* Vagrant 2.3.4 (2.3.2 or higher required with Virtualbox 7.x)
+* VirtualBox 6.1.40/7.0.4 (6.1.28 and higher versions have issue with host-only network. Pls check the troubleshooting section for details)
 * yq 4.6.1
 * ubuntu/xenial64 (v20210623.0.0)
 * ubuntu/bionic64 (v20220317.0.0)
