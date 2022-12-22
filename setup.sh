@@ -133,7 +133,7 @@ main() {
         exit 1
     elif [[ -z ${vagrant_bin} ]]; then
         echo 'Needs vagrant...'
-        echo 'Install using "brew cask install vagrant"'
+        echo 'Install using "brew install hashicorp/tap/hashicorp-vagrant"'
         exit 1
     fi
     yq_version=$(${yq_bin} --version | sed -E 's/^.* ([0-9]+)\.[0-9]+.[0-9]+/\1/')
