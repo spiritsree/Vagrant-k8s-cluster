@@ -70,6 +70,9 @@ $ sh destroy.sh
 1. [Kubernetes](https://github.com/kubernetes/kubernetes)
 1. [MetalLB](https://github.com/metallb/metallb)
 1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server)
+1. [Vagrant](https://www.vagrantup.com)
+1. [Vagrant Install](https://developer.hashicorp.com/vagrant/downloads)
+1. [VirtualBox](https://www.virtualbox.org/wiki/Changelog)
 
 ## Releases
 
@@ -110,8 +113,8 @@ $ cat /etc/vbox/networks.conf
 
 Tested with below versions of the apps
 
-* Vagrant 2.2.19
-* VirtualBox 6.1.32 (6.1.28 and higher versions have issue with host-only network. Pls check the troubleshooting section for details)
+* Vagrant 2.3.4
+* VirtualBox 6.1.40 (6.1.28 and higher versions have issue with host-only network. Pls check the troubleshooting section for details)
 * yq 4.6.1
 * ubuntu/xenial64 (v20210623.0.0)
 * ubuntu/bionic64 (v20220317.0.0)
