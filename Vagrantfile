@@ -5,13 +5,13 @@
 BOX_IMAGE = "ubuntu/bionic64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.21.14'
-GO_VERSION = '1.15'
+KUBERNETES_VERSION = '1.22.17'
+GO_VERSION = '1.16'
 DOCKER_VERSION = '19.03'
-CONTAINERD_VERSION = '1.6.1'
-CRICTL_VERSION = '1.21.0'
+CONTAINERD_VERSION = '1.6.14'
+CRICTL_VERSION = '1.22.1'
 METRICS_SERVER_VERSION = '0.6.2'
-METALLB_VERSION = '0.12.1'
+METALLB_VERSION = '0.13.7'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -246,11 +246,9 @@ kubectl create -f components.yaml > /dev/null 2>&1
 
 echo '====================== Deploying MetalLB ======================'
 echo 'Get the MetalLB manifest...'
-curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/namespace.yaml
-curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/metallb.yaml
+curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/config/manifests/metallb-native.yaml
 echo 'Deploying MetalLB...'
-kubectl create -f namespace.yaml > /dev/null 2>&1
-kubectl create -f metallb.yaml > /dev/null 2>&1
+kubectl create -f metallb-native.yaml > /dev/null 2>&1
 curl -sSLO https://raw.githubusercontent.com/spiritsree/Vagrant-k8s-cluster/master/configs/metallb-config.yaml
 export IPF=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".240" }')
 export IPL=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".250" }')
