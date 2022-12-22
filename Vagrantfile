@@ -246,11 +246,9 @@ kubectl create -f components.yaml > /dev/null 2>&1
 
 echo '====================== Deploying MetalLB ======================'
 echo 'Get the MetalLB manifest...'
-curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/namespace.yaml
-curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/manifests/metallb.yaml
+curl -sSLO https://raw.githubusercontent.com/metallb/metallb/v${METALLB_VER}/config/manifests/metallb-native.yaml
 echo 'Deploying MetalLB...'
-kubectl create -f namespace.yaml > /dev/null 2>&1
-kubectl create -f metallb.yaml > /dev/null 2>&1
+kubectl create -f metallb-native.yaml > /dev/null 2>&1
 curl -sSLO https://raw.githubusercontent.com/spiritsree/Vagrant-k8s-cluster/master/configs/metallb-config.yaml
 export IPF=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".240" }')
 export IPL=$(echo ${IPADDR} | awk -F'.' '{ print $1 "." $2 "." $3 ".250" }')
