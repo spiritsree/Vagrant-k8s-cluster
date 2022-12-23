@@ -109,7 +109,7 @@ echo -n 'Docker' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
 # Adding --node-ip=VAGRANT_NODE_IP so the pods can be reached from other nodes/api
-node_if=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+node_if=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }' | tr -d ':')
 node_ip=$(ifconfig ${node_if} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authentication-token-webhook=true' | wc -l) -eq 0 ]]; then
   E_ARG_PARAM="--cgroup-driver=systemd --authentication-token-webhook=true --node-ip=${node_ip}"
@@ -261,7 +261,7 @@ MASTERSCRIPT
 
 # Worker Script to initialize and join the Master to form a cluster.
 $workerscript = <<-'WORKERSCRIPT'
-export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }')
+export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }' | tr -d ':')
 export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -e 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
 export CONFIG_READY=0
