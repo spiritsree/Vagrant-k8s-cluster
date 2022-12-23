@@ -53,18 +53,33 @@ $ sh destroy.sh
 1. [Cilium](https://github.com/cilium/cilium)
 1. [..and more](https://kubernetes.io/docs/concepts/cluster-administration/networking/)
 
+## Container Runtimes
+
+1. [Container Runtimes](https://kubernetes.io/docs/setup/production-environment/container-runtimes/)
+1. [Containerd](https://github.com/containerd/containerd)
+1. [CRI-O](https://github.com/cri-o/cri-o)
+
 ## Installations
 
 1. [Calico](https://projectcalico.docs.tigera.io/getting-started/kubernetes/self-managed-onprem/onpremises)
 1. [Containerd](https://github.com/containerd/containerd/blob/main/docs/cri/installation.md)
+1. [CRI-O](https://github.com/cri-o/cri-o/blob/main/install.md)
 1. [Critool](https://github.com/kubernetes-sigs/cri-tools#install)
 1. [Kubernetes install using Kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
 1. [MetalLB](https://metallb.universe.tf/installation/)
 
+## Releases
+
+1. [Calico](https://github.com/projectcalico/calico/releases)
+1. [Containerd](https://github.com/containerd/containerd/blob/main/RELEASES.md)
+1. [Critool](https://github.com/kubernetes-sigs/cri-tools/releases)
+1. [Kubernetes](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/README.md)
+1. [MetalLB](https://metallb.universe.tf/release-notes/)
+1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server/releases)
+
 ## Reference
 
 1. [Calico Networking](https://www.tigera.io/tigera-products/calico/)
-1. [Containerd](https://github.com/containerd/containerd)
 1. [Critool](https://github.com/kubernetes-sigs/cri-tools)
 1. [Helm](https://github.com/helm/helm)
 1. [Kubernetes](https://github.com/kubernetes/kubernetes)
@@ -73,15 +88,6 @@ $ sh destroy.sh
 1. [Vagrant](https://www.vagrantup.com)
 1. [Vagrant Install](https://developer.hashicorp.com/vagrant/downloads)
 1. [VirtualBox](https://www.virtualbox.org/wiki/Changelog)
-
-## Releases
-
-1. [Calico](https://github.com/projectcalico/calico/releases)
-1. [Containerd](https://github.com/containerd/containerd/releases)
-1. [Critool](https://github.com/kubernetes-sigs/cri-tools/releases)
-1. [Kubernetes](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/README.md)
-1. [MetalLB](https://metallb.universe.tf/release-notes/)
-1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server/releases)
 
 ## Troubleshooting
 
