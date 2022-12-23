@@ -76,6 +76,7 @@ $ sh destroy.sh
 1. [Kubernetes](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/README.md)
 1. [MetalLB](https://metallb.universe.tf/release-notes/)
 1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server/releases)
+1. [TOML CLI](https://github.com/gnprice/toml-cli/releases)
 
 ## Reference
 
@@ -113,6 +114,14 @@ Create a file `/etc/vbox/networks.conf` with allowed IP ranges for Virtualbox.
 $ cat /etc/vbox/networks.conf
 * 172.28.128.0/24
 * 192.168.56.0/24
+```
+
+## Running test
+
+From any node run the below to test container runtime
+
+```
+$ critest -parallel 10 -ginkgo.succinct
 ```
 
 ## Versions
