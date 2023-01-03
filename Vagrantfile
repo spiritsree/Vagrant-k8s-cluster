@@ -8,7 +8,7 @@ NETWORKING_TYPE = nil
 KUBERNETES_VERSION = '1.23.15'
 GO_VERSION = '1.17'
 DOCKER_VERSION = '20.10'
-CONTAINERD_VERSION = '1.5.13'
+CONTAINERD_VERSION = '1.5'
 CRICTL_VERSION = '1.23.0'
 METRICS_SERVER_VERSION = '0.6.2'
 METALLB_VERSION = '0.13.7'
@@ -84,6 +84,22 @@ echo "export GOPATH=/go" >> /etc/profile
 export PATH=$PATH:$GOPATH/bin
 echo "export PATH=$PATH:$GOPATH/bin" >> /etc/profile
 
+echo '==================== Install Containerd ===================='
+echo -n 'Install Containerd: '
+containerd_image_version=$(apt-cache madison containerd.io | grep ${CONTAINERD_VERSION} | head -1 | awk '{print $3}')
+if [[ -z ${containerd_image_version} ]]; then
+  echo "Error: Containerd image with version ${CONTAINERD_VERSION} not found !!!"
+  exit 1
+fi
+apt-get install -y containerd.io="${containerd_image_version}" > /dev/null
+[[ $? -eq 0 ]] && echo OK
+# Enable CRI plugin in containerd
+if [[ -f /etc/containerd/config.toml ]]; then
+  toml set /etc/containerd/config.toml disabled_plugins "$(toml get  /etc/containerd/config.toml disabled_plugins | jq -c 'del(.[] | select(. == "cri"))')" | sed 's/\\//g' | sed 's/"\[/\[/' | sed 's/\]"/\]/' > config.toml
+  mv config.toml /etc/containerd/config.toml
+fi
+systemctl restart containerd
+
 echo '====================== Install Docker ======================'
 echo -n 'Install Docker-CE: '
 docker_image_version=$(apt-cache madison docker-ce | grep ${DOCKER_VERSION} | head -1 | awk '{print $3}')
@@ -94,24 +110,15 @@ fi
 apt-get install -y docker-ce="${docker_image_version}" > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
-echo '==================== Install Containerd ===================='
-echo -n 'Install Containerd: '
-curl -sSLO https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz 2> /dev/null && \
-tar --no-overwrite-dir -C / -xzf cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz
-[[ $? -eq 0 ]] && echo OK
-# Enable CRI plugin in containerd
-if [[ -f /etc/containerd/config.toml ]]; then
-  toml set /etc/containerd/config.toml disabled_plugins "$(toml get  /etc/containerd/config.toml disabled_plugins | jq -c 'del(.[] | select(. == "cri"))')" | sed 's/\\//g' | sed 's/"\[/\[/' | sed 's/\]"/\]/' > config.toml
-  mv config.toml /etc/containerd/config.toml
-fi
-systemctl start containerd
-
-echo '====================== Install crictl ======================'
-echo -n 'Install crictl: '
+echo '=============== Install crictl and critest ================='
+echo -n 'Install crictl and critest: '
 curl -sSLO https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz && \
 tar zxf crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+curl -sSLO https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/critest-v${CRICTL_VERSION}-linux-amd64.tar.gz && \
+tar zxf critest-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+
 [[ $? -eq 0 ]] && echo OK
-rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
+rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz critest-v${CRICTL_VERSION}-linux-amd64.tar.gz
 go install github.com/onsi/ginkgo/ginkgo@latest > /dev/null 2> /dev/null
 
 echo '====================== Swap Off ======================'
@@ -141,6 +148,8 @@ if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authen
 else
   E_ARG_PARAM="--cgroup-driver=systemd --node-ip=${node_ip}"
 fi
+# Containerd runtime
+# E_ARG_PARAM="${E_ARG_PARAM} --container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 sed -i "0,/ExecStart=/ s//Environment=\"KUBELET_EXTRA_ARGS=${E_ARG_PARAM}\"\n&/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 echo 'Changing Docker cgroup type to systemd...'
 cat <<EOF >/etc/docker/daemon.json
@@ -298,6 +307,7 @@ nc ${MASTERIP} 8889 > kube_join
 echo '====================== Kubeadm Join cluster ======================'
 echo "Joining to master with IP ${MASTERIP}..."
 sh kube_join
+systemctl restart containerd
 
 echo '====================== Update Kube config ======================'
 echo 'Verifying if kube config is available..'
