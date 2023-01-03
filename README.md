@@ -72,10 +72,13 @@ $ sh destroy.sh
 
 1. [Calico](https://github.com/projectcalico/calico/releases)
 1. [Containerd](https://github.com/containerd/containerd/blob/main/RELEASES.md)
+1. [Containerd](https://containerd.io/releases/)
+1. [CRIO](https://github.com/cri-o/cri-o/releases)
 1. [Critool](https://github.com/kubernetes-sigs/cri-tools/releases)
 1. [Kubernetes](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/README.md)
 1. [MetalLB](https://metallb.universe.tf/release-notes/)
 1. [Metrics Server](https://github.com/kubernetes-sigs/metrics-server/releases)
+1. [TOML CLI](https://github.com/gnprice/toml-cli/releases)
 
 ## Reference
 
@@ -113,6 +116,74 @@ Create a file `/etc/vbox/networks.conf` with allowed IP ranges for Virtualbox.
 $ cat /etc/vbox/networks.conf
 * 172.28.128.0/24
 * 192.168.56.0/24
+```
+
+## Installing Containerd
+
+* Install containerd
+
+```
+# curl -sSLO https://github.com/containerd/containerd/releases/download/v1.6.14/containerd-1.6.14-linux-amd64.tar.gz
+# tar xzvf containerd-1.6.14-linux-amd64.tar.gz -C /usr/local
+```
+
+* Install runc
+
+```
+# curl -sSLO https://github.com/opencontainers/runc/releases/download/v1.1.3/runc.amd64
+# install -m 755 runc.amd64 /usr/local/sbin/runc
+```
+
+* Install CNI plugins
+
+```
+# curl -sSLO https://github.com/containernetworking/plugins/releases/download/v1.1.1/cni-plugins-linux-amd64-v1.1.1.tgz
+# mkdir -p /opt/cni/bin
+# tar xzvf cni-plugins-linux-amd64-v1.1.1.tgz -C /opt/cni/bin
+```
+
+* Configure containerd
+
+```
+# mkdir /etc/containerd
+# containerd config default | sudo tee /etc/containerd/config.toml
+# sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+# curl -L https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -o /etc/systemd/system/containerd.service
+# systemctl daemon-reload
+# systemctl enable --now containerd
+# systemctl status containerd
+```
+
+* Configure kubelet to use containerd as runtime
+
+Edit file `/var/lib/kubelet/kubeadm-flags.env` and add `--container-runtime=remote` and `--container-runtime-endpoint=unix:///run/containerd/containerd.sock`.
+
+`kubeadm` toold stores the CRI socket for each host as an annotation in the Node object. To change it you can execute the following command
+
+```
+$ kubectl edit node <node-name>
+```
+
+in the editor change the value of `kubeadm.alpha.kubernetes.io/cri-socket` from `/var/run/dockershim.sock` to CRI socket path of your choice, in this case (`unix:///run/containerd/containerd.sock`) and save the change.
+
+Restart kubelet
+
+```
+# systemctl restart kubelet
+```
+
+Check if the runtime is changed
+
+```
+# kubectl get nodes -o wide
+```
+
+## Running test
+
+From any node run the below to test container runtime
+
+```
+$ critest -parallel 10 -ginkgo.succinct
 ```
 
 ## Versions

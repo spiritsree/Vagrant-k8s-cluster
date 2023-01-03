@@ -5,13 +5,14 @@
 BOX_IMAGE = "ubuntu/bionic64"
 WORKER_COUNT = nil
 NETWORKING_TYPE = nil
-KUBERNETES_VERSION = '1.22.17'
-GO_VERSION = '1.16'
-DOCKER_VERSION = '19.03'
-CONTAINERD_VERSION = '1.6.14'
-CRICTL_VERSION = '1.22.1'
+KUBERNETES_VERSION = '1.23.15'
+GO_VERSION = '1.17'
+DOCKER_VERSION = '20.10'
+CONTAINERD_VERSION = '1.5'
+CRICTL_VERSION = '1.23.0'
 METRICS_SERVER_VERSION = '0.6.2'
 METALLB_VERSION = '0.13.7'
+TOML_CLI_VERSION = '0.2.3'
 
 if WORKER_COUNT.nil?
   NODE_COUNT = 2
@@ -32,50 +33,44 @@ export GO_VERSION=$2
 export DOCKER_VERSION=$3
 export CONTAINERD_VERSION=$4
 export CRICTL_VERSION=$5
+export TOML_VERSION=$6
 export DEBIAN_FRONTEND=noninteractive
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
+
 echo '====================== Install mdns ======================'
 echo -n 'Install avahi-daemon and mdns: '
 apt-get update > /dev/null
 apt-get install -y avahi-daemon libnss-mdns > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
-echo '====================== Adding apt-keys ======================'
+echo '=========== Adding apt-keys and install base pkgs ==============='
+mkdir /etc/apt/keyrings
 apt-get update > /dev/null && apt-get install -y apt-transport-https ca-certificates curl jq software-properties-common libseccomp2 > /dev/null
 echo -n 'Add docker apt-key: '
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 echo -n 'Add docker apt-repository: '
 add-apt-repository "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null
 [[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" > /dev/null; exit 1; }
-
 echo -n 'Add google cloud apt-key: '
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
 echo -n 'Add kubernetes apt-repository: '
-add-apt-repository "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /dev/null
-[[ $? -eq 0 ]] && echo OK || { add-apt-repository -r "deb https://apt.kubernetes.io/ kubernetes-xenial main"; echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
+[[ $? -eq 0 ]] && echo OK || { echo "Check https://packages.cloud.google.com/apt/dists"; exit 1; }
 apt-get update > /dev/null
-echo '====================== Install Docker ======================'
-echo -n 'Install Docker-CE: '
-docker_image_version=$(apt-cache madison docker-ce | grep ${DOCKER_VERSION} | head -1 | awk '{print $3}')
-if [[ -z ${docker_image_version} ]]; then
-  echo "Error: Docker image with version ${DOCKER_VERSION} not found !!!"
-  exit 1
-fi
-apt-get install -y docker-ce="${docker_image_version}" > /dev/null
-[[ $? -eq 0 ]] && echo OK
+curl -sSLO https://github.com/gnprice/toml-cli/releases/download/v${TOML_VERSION}/toml-${TOML_VERSION}-x86_64-linux.tar.gz
+tar xzf toml-${TOML_VERSION}-x86_64-linux.tar.gz
+mv toml-${TOML_VERSION}-x86_64-linux/toml /usr/local/bin
 
-echo '==================== Install Containerd ===================='
-echo -n 'Install Containerd: '
-curl -sSLO https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz 2> /dev/null && \
-tar --no-overwrite-dir -C / -xzf cri-containerd-cni-${CONTAINERD_VERSION}-linux-amd64.tar.gz
-[[ $? -eq 0 ]] && echo OK
-systemctl start containerd
-
-echo '====================== Install Kubernetes ======================'
-echo -n 'Install Kubernetes: '
-apt-get install -y kubeadm=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
-kubectl=$(apt-cache madison kubectl | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
-kubelet=$(apt-cache madison kubelet | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') > /dev/null
+echo '====================== Traffic through iptables ======================'
+echo -n 'Forwarding IPv4 and letting iptables see bridged traffic..'
+echo "overlay" > /etc/modules-load.d/k8s.conf
+echo "br_netfilter" >> /etc/modules-load.d/k8s.conf
+modprobe overlay
+modprobe br_netfilter
+echo "net.bridge.bridge-nf-call-iptables  = 1" > /etc/sysctl.d/k8s.conf
+echo "net.bridge.bridge-nf-call-ip6tables = 1" >> /etc/sysctl.d/k8s.conf
+echo "net.ipv4.ip_forward                 = 1" >> /etc/sysctl.d/k8s.conf
+sysctl --system > /dev/null
 [[ $? -eq 0 ]] && echo OK
 
 echo '====================== Install and Setup Go ======================'
@@ -89,12 +84,42 @@ echo "export GOPATH=/go" >> /etc/profile
 export PATH=$PATH:$GOPATH/bin
 echo "export PATH=$PATH:$GOPATH/bin" >> /etc/profile
 
-echo '====================== Install crictl ======================'
-echo -n 'Install crictl: '
+echo '==================== Install Containerd ===================='
+echo -n 'Install Containerd: '
+containerd_image_version=$(apt-cache madison containerd.io | grep ${CONTAINERD_VERSION} | head -1 | awk '{print $3}')
+if [[ -z ${containerd_image_version} ]]; then
+  echo "Error: Containerd image with version ${CONTAINERD_VERSION} not found !!!"
+  exit 1
+fi
+apt-get install -y containerd.io="${containerd_image_version}" > /dev/null
+[[ $? -eq 0 ]] && echo OK
+# Enable CRI plugin in containerd
+if [[ -f /etc/containerd/config.toml ]]; then
+  toml set /etc/containerd/config.toml disabled_plugins "$(toml get  /etc/containerd/config.toml disabled_plugins | jq -c 'del(.[] | select(. == "cri"))')" | sed 's/\\//g' | sed 's/"\[/\[/' | sed 's/\]"/\]/' > config.toml
+  mv config.toml /etc/containerd/config.toml
+fi
+systemctl restart containerd
+
+echo '====================== Install Docker ======================'
+echo -n 'Install Docker-CE: '
+docker_image_version=$(apt-cache madison docker-ce | grep ${DOCKER_VERSION} | head -1 | awk '{print $3}')
+if [[ -z ${docker_image_version} ]]; then
+  echo "Error: Docker image with version ${DOCKER_VERSION} not found !!!"
+  exit 1
+fi
+apt-get install -y docker-ce="${docker_image_version}" > /dev/null
+[[ $? -eq 0 ]] && echo OK
+
+echo '=============== Install crictl and critest ================='
+echo -n 'Install crictl and critest: '
 curl -sSLO https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz && \
 tar zxf crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+curl -sSLO https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRICTL_VERSION}/critest-v${CRICTL_VERSION}-linux-amd64.tar.gz && \
+tar zxf critest-v${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+
 [[ $? -eq 0 ]] && echo OK
-rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz
+rm -f crictl-v${CRICTL_VERSION}-linux-amd64.tar.gz critest-v${CRICTL_VERSION}-linux-amd64.tar.gz
+go install github.com/onsi/ginkgo/ginkgo@latest > /dev/null 2> /dev/null
 
 echo '====================== Swap Off ======================'
 [[ $(cat /proc/swaps | wc -l) -gt 1 ]] && cat /proc/swaps
@@ -103,8 +128,15 @@ echo 'Swap is off...'
 [[ $(cat /etc/fstab | grep swap | wc -l) -gt 0 ]] && { sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab; }
 echo 'Commented swap partition from fstab...'
 
-# Configure same cgroup for docker and kubernetes
+echo '====================== Install Kubernetes ======================'
+echo -n 'Install Kubernetes: '
+apt-get install -y kubeadm=$(apt-cache madison kubeadm | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
+kubectl=$(apt-cache madison kubectl | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') \
+kubelet=$(apt-cache madison kubelet | grep ${KUBE_VERSION} |  head -1 | awk '{print $3}') > /dev/null
+[[ $? -eq 0 ]] && echo OK
+
 echo '====================== Configure cgroup to systemd ======================'
+# Configure same cgroup for docker and kubernetes
 echo -n 'Docker' && docker info 2> /dev/null | grep -i cgroup
 echo 'Changing Kubernetes cgroup type to systemd...'
 # Adding --authentication-token-webhook=true so that metrics-server can connect without any issues.
@@ -116,6 +148,8 @@ if [[ $(cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf | grep 'authen
 else
   E_ARG_PARAM="--cgroup-driver=systemd --node-ip=${node_ip}"
 fi
+# Containerd runtime
+# E_ARG_PARAM="${E_ARG_PARAM} --container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 sed -i "0,/ExecStart=/ s//Environment=\"KUBELET_EXTRA_ARGS=${E_ARG_PARAM}\"\n&/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 echo 'Changing Docker cgroup type to systemd...'
 cat <<EOF >/etc/docker/daemon.json
@@ -143,12 +177,10 @@ echo -n 'Docker ' && docker info 2> /dev/null | grep -i cgroup
 echo '====================== Net Info ======================'
 echo -e "IP Link ...... \n $(ip link)"
 echo -e "Product UUID ...... \n $(cat /sys/class/dmi/id/product_uuid)"
-
 SCRIPT
 
 # Master Script to initialize and setup Kubernetes Master.
 $masterscript = <<-'MASTERSCRIPT'
-
 export NET_INTERFACE=$(ifconfig | grep -B2 -E '172.28.128|192.168.56' | grep enp0 | awk '{ print $1 }' | tr -d ':')
 export IPADDR=$(ifconfig ${NET_INTERFACE} | grep -E 'Mask|netmask' | awk '{ print $2 }' | cut -d: -f2)
 export NODENAME=$(hostname -s)
@@ -162,14 +194,9 @@ echo "$IPADDR  $NODENAME.local" >> /etc/hosts
 
 echo '====================== Initialize Kubeadm ======================'
 kube_version=$(kubectl version --client --short -o json | jq -r '"stable-" + .clientVersion.major + "." + .clientVersion.minor')
-kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
+kubeadm init --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/16 --apiserver-advertise-address=$IPADDR --kubernetes-version=${kube_version} | tee kubeinit.out
 echo "$(cat kubeinit.out | sed ':a;N;$!ba;s/\\\n/ /g' | grep -e '^[ ]*kubeadm join' | sed -e 's/^[ \t]*//')" > /opt/join.cmd
 export KUBECONFIG=/etc/kubernetes/admin.conf
-
-echo '====================== Traffic through iptables ======================'
-echo 'IPv4 trafic to pass through the iptables chain..'
-echo 'Setting net.bridge.bridge-nf-call-iptables to 1..'
-sysctl net.bridge.bridge-nf-call-iptables=1
 
 echo '====================== Setup admin cred ======================'
 echo 'Copying credentials to $HOME/.kube/config ...'
@@ -314,7 +341,7 @@ Vagrant.configure("2") do |config|
     master.vm.network "private_network", type: "dhcp"
     master.vm.provision "shell" do |script|
       script.inline = $script
-      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
+      script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION, TOML_CLI_VERSION]
     end
     master.vm.provision "shell" do |masterscript|
       masterscript.inline = $masterscript
@@ -329,7 +356,7 @@ Vagrant.configure("2") do |config|
       node.vm.network "private_network", type: "dhcp"
       node.vm.provision "shell" do |script|
        script.inline = $script
-       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION]
+       script.args = [KUBERNETES_VERSION, GO_VERSION, DOCKER_VERSION, CONTAINERD_VERSION, CRICTL_VERSION, TOML_CLI_VERSION]
       end
       node.vm.provision "shell", inline: $workerscript
     end
