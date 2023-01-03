@@ -307,7 +307,6 @@ nc ${MASTERIP} 8889 > kube_join
 echo '====================== Kubeadm Join cluster ======================'
 echo "Joining to master with IP ${MASTERIP}..."
 sh kube_join
-systemctl restart containerd
 
 echo '====================== Update Kube config ======================'
 echo 'Verifying if kube config is available..'
